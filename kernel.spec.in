@@ -2,7 +2,7 @@
 # Based on the Open SUSE kernel-spec & Fedora kernel-spec.
 #
 
-%define variant qubes
+%define variant qubeshwp2
 %define plainrel @REL@
 %define version %(echo '@VERSION@' | sed 's/-rc.*//')
 %define upstream_version @VERSION@
@@ -148,6 +148,9 @@ Patch29: v3-0002-efi-xen-Implement-memory-descriptor-lookup-based-.patch
 Patch30: v3-0003-efi-Apply-allowlist-to-EFI-configuration-tables-w.patch
 Patch31: v3-0004-efi-Actually-enable-the-ESRT-under-Xen.patch
 Patch32: v3-0005-efi-Warn-if-trying-to-reserve-memory-under-Xen.patch
+Patch40: 0001-acpi-processor-fix-eval-_PDC.patch
+Patch41: 0002-acpi-processor-sanitize-_PDC-buffer-bits-when-runnin.patch
+Patch42: 0003-xen-acpi-upload-power.patch
 
 %description
 Qubes Dom0 kernel.
@@ -244,7 +247,7 @@ fi
 make clean $MAKE_ARGS
 
 rm -f source
-find . ! -type d -printf '%%P\n' > %my_builddir/obj-files
+find . ! -type d -printf '%%p\n' | sed 's|^./||' > %my_builddir/obj-files
 
 rm -rf %_builddir/dummy-psu
 tar -x -C %_builddir -zf %{SOURCE1}
