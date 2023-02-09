@@ -1,0 +1,103 @@
+From 0ddd9a99e5c0f1fa1e3c6386ef5788e3cbd9d023 Mon Sep 17 00:00:00 2001
+From: Roger Pau Monne <roger.pau@citrix.com>
+Date: Mon, 21 Nov 2022 11:21:11 +0100
+Subject: [PATCH 2/3] acpi/processor: sanitize _PDC buffer bits when running as
+ Xen dom0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Processor _PDC buffer bits notify ACPI of the OS capabilities, and
+so ACPI can adjust the return of other Processor methods taking the OS
+capabilities into account.
+
+When Linux is running as a Xen dom0, it's the hypervisor the entity
+in charge of processor power management, and hence Xen needs to make
+sure the capabilities reported in the _PDC buffer match the
+capabilities of the driver in Xen.
+
+Introduce a small helper to sanitize the buffer when running as Xen
+dom0.
+
+Signed-off-by: Roger Pau Monné <roger.pau@citrix.com>
+Cc: stable@vger.kernel.org
+
+When Xen supports HWP, this serves as the equivalent of commit
+a21211672c9a ("ACPI / processor: Request native thermal interrupt
+handling via _OSC") for Dom0.  Xen will set bit 12 in the _PDC bits and
+this call will apply it.
+
+Signed-off-by: Jason Andryuk <jandryuk@gmail.com>
+---
+ arch/x86/include/asm/xen/hypervisor.h |  2 ++
+ arch/x86/xen/enlighten.c              | 17 +++++++++++++++++
+ drivers/acpi/processor_pdc.c          |  8 ++++++++
+ 3 files changed, 27 insertions(+)
+
+diff --git a/arch/x86/include/asm/xen/hypervisor.h b/arch/x86/include/asm/xen/hypervisor.h
+index b9f512138043..b4ed90ef5e68 100644
+--- a/arch/x86/include/asm/xen/hypervisor.h
++++ b/arch/x86/include/asm/xen/hypervisor.h
+@@ -63,12 +63,14 @@ void __init mem_map_via_hcall(struct boot_params *boot_params_p);
+ 
+ #ifdef CONFIG_XEN_DOM0
+ bool __init xen_processor_present(uint32_t acpi_id);
++void xen_sanitize_pdc(uint32_t *buf);
+ #else
+ static inline bool xen_processor_present(uint32_t acpi_id)
+ {
+ 	BUG();
+ 	return false;
+ }
++static inline void xen_sanitize_pdc(uint32_t *buf) { BUG(); }
+ #endif
+ 
+ #endif /* _ASM_X86_XEN_HYPERVISOR_H */
+diff --git a/arch/x86/xen/enlighten.c b/arch/x86/xen/enlighten.c
+index d4c44361a26c..394dd6675113 100644
+--- a/arch/x86/xen/enlighten.c
++++ b/arch/x86/xen/enlighten.c
+@@ -372,4 +372,21 @@ bool __init xen_processor_present(uint32_t acpi_id)
+ 	return false;
+ }
+ EXPORT_SYMBOL(xen_processor_present);
++
++void xen_sanitize_pdc(uint32_t *buf)
++{
++	struct xen_platform_op op = {
++		.cmd			= XENPF_set_processor_pminfo,
++		.interface_version	= XENPF_INTERFACE_VERSION,
++		.u.set_pminfo.id	= -1,
++		.u.set_pminfo.type	= XEN_PM_PDC,
++	};
++	int ret;
++
++	set_xen_guest_handle(op.u.set_pminfo.pdc, buf);
++	ret = HYPERVISOR_platform_op(&op);
++	if (ret)
++		pr_info("sanitize of _PDC buffer bits from Xen failed: %d\n",
++		        ret);
++}
+ #endif
+diff --git a/drivers/acpi/processor_pdc.c b/drivers/acpi/processor_pdc.c
+index 18fb04523f93..58f4c208517a 100644
+--- a/drivers/acpi/processor_pdc.c
++++ b/drivers/acpi/processor_pdc.c
+@@ -137,6 +137,14 @@ acpi_processor_eval_pdc(acpi_handle handle, struct acpi_object_list *pdc_in)
+ 		buffer[2] &= ~(ACPI_PDC_C_C2C3_FFH | ACPI_PDC_C_C1_FFH);
+ 
+ 	}
++	if (xen_initial_domain())
++		/*
++		 * When Linux is running as Xen dom0 it's the hypervisor the
++		 * entity in charge of the processor power management, and so
++		 * Xen needs to check the OS capabilities reported in the _PDC
++		 * buffer matches what the hypervisor driver supports.
++		 */
++		xen_sanitize_pdc((uint32_t *)pdc_in->pointer->buffer.pointer);
+ 	status = acpi_evaluate_object(handle, "_PDC", pdc_in, NULL);
+ 
+ 	if (ACPI_FAILURE(status))
+-- 
+2.39.2
+

@@ -2,7 +2,7 @@
 # Based on the Open SUSE kernel-spec & Fedora kernel-spec.
 #
 
-%define variant qubes
+%define variant qubeshwp2
 %define plainrel @REL@
 %define version %(echo '@VERSION@' | sed 's/~rc.*/.0/')
 %define upstream_version %(echo '@VERSION@' | sed 's/~rc/-rc/')
@@ -130,6 +130,9 @@ Patch21: 0001-fb-addr-fix-obtain-upper-32-bits.patch
 Patch22: 0001-fb-addr-fix-obtain-full-video-frame-buffer-address.patch
 Patch23: increase-reclaim-speed.patch
 Patch26: 0001-Re-enable-interrupts-before-loading-PNVM.patch
+Patch30: 0001-acpi-processor-fix-eval-_PDC.patch
+Patch31: 0002-acpi-processor-sanitize-_PDC-buffer-bits-when-runnin.patch
+Patch32: 0003-xen-acpi-upload-power.patch
 
 %description
 Qubes Dom0 kernel.
@@ -220,7 +223,7 @@ fi
 make clean $MAKE_ARGS
 
 rm -f source
-find . ! -type d -printf '%%P\n' > %my_builddir/obj-files
+find . ! -type d -printf '%%p\n' | sed 's|^./||' > %my_builddir/obj-files
 
 rm -rf %_builddir/dummy-psu
 tar -x -C %_builddir -zf %{SOURCE1}
